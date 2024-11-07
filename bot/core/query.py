@@ -685,12 +685,15 @@ async def run_query_tapper1(querys: list[str], proxies):
         i = 0
         for query in querys:
             try:
-                await Tapper(query=query,session_name=f"{name} {i}", multi_thread=True).run(next(proxies_cycle) if proxies_cycle else None)
+                await Tapper(query=query, session_name=f"{name} {i}", multi_thread=True).run(next(proxies_cycle) if proxies_cycle else None)
             except InvalidSession:
                 logger.error(f"Invalid Query: {query}")
+            i += 1
 
             sleep_ = randint(settings.DELAY_EACH_ACCOUNT[0], settings.DELAY_EACH_ACCOUNT[1])
             logger.info(f"Sleep {sleep_}s...")
             await asyncio.sleep(sleep_)
-        break
 
+        sleep_ = randint(600, 700)
+        logger.info(f"<red>Sleep {sleep_}s...</red>")
+        await asyncio.sleep(sleep_)

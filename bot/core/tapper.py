@@ -754,13 +754,17 @@ async def run_tapper1(tg_clients: list[Client], proxies):
     proxies_cycle = cycle(proxies) if proxies else None
     while True:  
         for tg_client in tg_clients:
-                try:
-                    await Tapper(tg_client=tg_client, multi_thread=False).run(next(proxies_cycle) if proxies_cycle else None)
-                except InvalidSession:
-                    logger.error(f"{tg_client.name} | Invalid Session")
+            try:
+                await Tapper(tg_client=tg_client, multi_thread=False).run(next(proxies_cycle) if proxies_cycle else None)
+            except InvalidSession:
+                logger.error(f"{tg_client.name} | Invalid Session")
 
-                sleep_ = randint(settings.DELAY_EACH_ACCOUNT[0], settings.DELAY_EACH_ACCOUNT[1])
-                logger.info(f"Sleep {sleep_}s...")
-                await asyncio.sleep(sleep_)
-        break
+            sleep_ = randint(settings.DELAY_EACH_ACCOUNT[0], settings.DELAY_EACH_ACCOUNT[1])
+            logger.info(f"Sleep {sleep_}s...")
+            await asyncio.sleep(sleep_)
+
+        sleep_ = randint(600, 700)
+        logger.info(f"<red>Sleep {sleep_}s...</red>")
+        await asyncio.sleep(sleep_)
+        
 

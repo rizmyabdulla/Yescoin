@@ -151,18 +151,18 @@ async def run_tasks_query(query_ids: list[str]):
     ]
 
     await asyncio.gather(*tasks)
+
 async def run_tasks(tg_clients: list[Client]):
     proxies = get_proxies()
     proxies_cycle = cycle(proxies) if proxies else None
-
-    tasks = []
-    for tg_client in tg_clients:
-        tasks.append(
-            asyncio.create_task(
-                run_tapper(
-                    tg_client=tg_client,
-                    proxy=next(proxies_cycle) if proxies_cycle else None
-                )
+    tasks = [
+        asyncio.create_task(
+            run_tapper(
+                tg_client=tg_client,
+                proxy=next(proxies_cycle) if proxies_cycle else None,
             )
         )
+        for tg_client in tg_clients
+    ]
+
     await asyncio.gather(*tasks)
