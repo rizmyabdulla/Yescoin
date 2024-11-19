@@ -1,6 +1,7 @@
 import asyncio
 import json
 from itertools import cycle
+import sys
 from time import time
 import aiohttp
 import cloudscraper
@@ -10,16 +11,22 @@ from better_proxy import Proxy
 from bot.core.agents import generate_random_user_agent
 from bot.config import settings
 
+from urllib.parse import unquote
+
+from pyrogram import Client
+from pyrogram.errors import Unauthorized, UserDeactivated, AuthKeyUnregistered, FloodWait
+from pyrogram.raw.types import InputBotAppShortName
+from pyrogram.raw.functions.messages import RequestWebView, RequestAppWebView
+
 from bot.utils import logger
 from bot.exceptions import InvalidSession
 from .headers import headers
-from random import randint
+from random import uniform
 import random
 import hashlib
 import urllib.parse
 
-endpoint1 = "https://api.yescoin.gold/"
-endpoint2 = "https://api-backend.yescoin.gold/"
+endpoint = "https://bi.yescoin.gold/"
 
 
 class Tapper:
@@ -63,9 +70,9 @@ class Tapper:
             query_string = self.query.strip()
                 
             parsed_query = urllib.parse.unquote(query_string)
-            payload = f"user={parsed_query}"
+            payload = {"code": parsed_query}
 
-            get_token = http_client.post(f"{endpoint2}user/login", json=payload)
+            get_token = http_client.post(f"{endpoint}user/login", json=payload)
             if get_token.status_code == 200 and get_token.json().get("code") == 0:
                 res = get_token.json()
                 data = res['data']
@@ -84,11 +91,11 @@ class Tapper:
 
     def process_invitation(self, httpClient: cloudscraper.CloudScraper):
         try:
-            invitation = httpClient.get(f"{endpoint2}invite/getInviteGiftBoxInfoWithCode?inviteCode={self.my_ref}")
+            invitation = httpClient.get(f"{endpoint}invite/getInviteGiftBoxInfoWithCode?inviteCode={self.my_ref}")
             if invitation.status_code == 200 and invitation.json().get("code") == 0:
                 res = invitation.json()
                 if res['code'] == 0:
-                    claim_invitation = httpClient.post(f"{endpoint2}invite/claimGiftBox?packId={self.my_ref}")
+                    claim_invitation = httpClient.post(f"{endpoint}invite/claimGiftBox?packId={self.my_ref}")
                     if claim_invitation.status_code == 200 and claim_invitation.json().get("code") == 0:
                         logger.success(f"{self.session_name} | <green>Successfully claimed invite bonus</green>")
                     else:
@@ -100,7 +107,7 @@ class Tapper:
 
     def fetch_account_info(self, http_client: cloudscraper.CloudScraper):
         try:
-            account_info = http_client.get(f"{endpoint2}account/getAccountInfo")
+            account_info = http_client.get(f"{endpoint}account/getAccountInfo")
             if account_info.status_code == 200 and account_info.json().get("code") == 0:
                 res = account_info.json()
                 data = res['data']
@@ -114,7 +121,7 @@ class Tapper:
     
     def fetch_build_info(self, http_client: cloudscraper.CloudScraper):
         try:
-            build_info = http_client.get(f"{endpoint2}build/getAccountBuildInfo")
+            build_info = http_client.get(f"{endpoint}build/getAccountBuildInfo")
             res = build_info.json()
             if build_info.status_code == 200 and res.get("code") == 0:
                 data = res.get("data")
@@ -128,7 +135,7 @@ class Tapper:
 
     def fetch_game_info(self, http_client: cloudscraper.CloudScraper):
         try:
-            game_info = http_client.get(f"{endpoint2}game/getGameInfo")
+            game_info = http_client.get(f"{endpoint}game/getGameInfo")
             if game_info.status_code == 200 and game_info.json().get("code") == 0:
                 res = game_info.json()
                 data = res['data']
@@ -149,7 +156,7 @@ class Tapper:
     
     def get_checkin(self, http_client: cloudscraper.CloudScraper):
         try:
-            get_checkin = http_client.get(f"{endpoint2}signIn/list")
+            get_checkin = http_client.get(f"{endpoint}signIn/list")
             res = get_checkin.json()
             if get_checkin.status_code == 200 and res.get("code") == 0:
                 for checkin in res['data']:
@@ -165,7 +172,7 @@ class Tapper:
     
     async def process_checkin(self, http_client: cloudscraper.CloudScraper):
         checkin = self.get_checkin(http_client)
-        await asyncio.sleep(random.randint(1, 3))
+        await asyncio.sleep(random.uniform(1, 3))
 
         if checkin is None:
             return False
@@ -177,7 +184,7 @@ class Tapper:
         http_client.headers.update({'tm': str(tm), 'sign': str(sign)})
         try:
             
-            checkin_res = http_client.post(f"{endpoint2}signIn/claim", data=payload)
+            checkin_res = http_client.post(f"{endpoint}signIn/claim", data=payload)
             res = checkin_res.json()
             if checkin_res.status_code == 200:
                 if res.get("code") == 0:
@@ -196,7 +203,7 @@ class Tapper:
 
     def offline_bonus(self, http_client: cloudscraper.CloudScraper):
         try:
-            offline_bonus = http_client.get(f"{endpoint2}game/getOfflineYesPacBonusInfo")
+            offline_bonus = http_client.get(f"{endpoint}game/getOfflineYesPacBonusInfo")
             res = offline_bonus.json()
 
             if offline_bonus.status_code == 200:
@@ -218,7 +225,7 @@ class Tapper:
         payload = json.dumps({"id": offline_bonus_id, "createAt": tm, "destination": "", "claimType": 2})
         http_client.headers.update({'tm': str(tm), 'sign': str(sign)})
         try:
-            offline_bonus_res = http_client.post(f"{endpoint2}game/claimOfflineBonus", data=payload)
+            offline_bonus_res = http_client.post(f"{endpoint}game/claimOfflineBonus", data=payload)
             res = offline_bonus_res.json()
             if offline_bonus_res.status_code == 200:
                 if res.get("code") == 0:
@@ -235,7 +242,7 @@ class Tapper:
     def collect_coin(self, http_client: cloudscraper.CloudScraper, amount: int):
         try:
             payload = json.dumps(amount)
-            collect_coin = http_client.post(f"{endpoint2}game/collectCoin", json=payload)
+            collect_coin = http_client.post(f"{endpoint}game/collectCoin", json=payload)
             res = collect_coin.json()
             if collect_coin.status_code == 200:
                 if res.get("code") == 0:
@@ -257,7 +264,7 @@ class Tapper:
         try:
             while coin_amount > 0:
                 payload = {"boxType": box_type, "coinCount": coin_amount}
-                collect_special_box = http_client.post(f"{endpoint2}game/collectSpecialBoxCoin", json=payload)
+                collect_special_box = http_client.post(f"{endpoint}game/collectSpecialBoxCoin", json=payload)
                 res = collect_special_box.json()
                 if collect_special_box.status_code == 200:
                     if res.get("code") == 0:
@@ -280,7 +287,7 @@ class Tapper:
         
     def refresh_special_box(self, http_client: cloudscraper.CloudScraper):
         try:
-            refresh_special_box = http_client.post(f"{endpoint2}game/specialBoxReloadPage")
+            refresh_special_box = http_client.post(f"{endpoint}game/specialBoxReloadPage")
             if refresh_special_box.status_code == 200:
                 if refresh_special_box.json().get("code") == 0:
                     return True
@@ -292,7 +299,7 @@ class Tapper:
         
     def fetch_special_box(self, http_client: cloudscraper.CloudScraper):
         try:
-            special_box = http_client.get(f"{endpoint2}game/getSpecialBoxInfo")
+            special_box = http_client.get(f"{endpoint}game/getSpecialBoxInfo")
             res = special_box.json()
             if special_box.status_code == 200:
                 if res.get("code") == 0:
@@ -306,7 +313,7 @@ class Tapper:
         
     def recover_special_box(self, http_client: cloudscraper.CloudScraper):
         try:
-            recover_special_box = http_client.post(f"{endpoint2}game/recoverSpecialBox")
+            recover_special_box = http_client.post(f"{endpoint}game/recoverSpecialBox")
             if recover_special_box.status_code == 200:
                 if recover_special_box.json().get("code") == 0:
                     logger.success(f"{self.session_name} | <green>Successfully recovered special box</green>")
@@ -320,7 +327,7 @@ class Tapper:
     
     def recover_coin_pool(self, http_client: cloudscraper.CloudScraper):
         try:
-            recover_coin_pool = http_client.post(f"{endpoint2}game/recoverCoinPool")
+            recover_coin_pool = http_client.post(f"{endpoint}game/recoverCoinPool")
             if recover_coin_pool.status_code == 200:
                 if recover_coin_pool.json().get("code") == 0:
                     logger.success(f"{self.session_name} | <green>Successfully recovered coin pool</green>")
@@ -370,11 +377,11 @@ class Tapper:
             yes_pack = upgrade_data[4]
             if yes_pack["currentLevel"] < yes_pack["maxLevel"] and yes_pack["currentLevel"] < maxUpgrade and self.balance >= yes_pack["upgradeCost"]:
                 payload = json.dumps({"upgrade_type": 4})
-                response = http_client.post(f"{endpoint1}build/levelUp", json=payload)
+                response = http_client.post(f"{endpoint}build/levelUp", json=payload)
                 if response.ok:
                     logger.success(f"{self.session_name} | <green>Successfully upgraded Yes Pack to level {yes_pack['currentLevel'] + 1}</green>")
                     self.update_balance(http_client)
-                    await asyncio.sleep(random.randint(1, 3))
+                    await asyncio.sleep(random.uniform(1, 3))
 
             other_upgrade_types = [1, 2, 3]
             random.shuffle(other_upgrade_types)
@@ -382,11 +389,11 @@ class Tapper:
                 upgrade_info = upgrade_data[upgrade_type]
                 if upgrade_info["currentLevel"] < upgrade_info["maxLevel"] and upgrade_info["currentLevel"] < maxUpgrade and self.balance >= upgrade_info["upgradeCost"]:
                     payload = json.dumps({"upgrade_type": upgrade_type})
-                    response = http_client.post(f"{endpoint1}build/levelUp", json=payload)
+                    response = http_client.post(f"{endpoint}build/levelUp", json=payload)
                     if response.ok:
                         logger.info(f"{self.session_name} | <green>Successfully upgraded {upgrade_info['name']} to level {upgrade_info['currentLevel'] + 1}</green>")
                         self.update_balance(http_client)
-                        await asyncio.sleep(random.randint(1, 3))
+                        await asyncio.sleep(random.uniform(1, 3))
                     else:
                         logger.warning(f"{self.session_name} | <yellow>Failed to upgrade {upgrade_info['name']}.</yellow>")
 
@@ -396,11 +403,10 @@ class Tapper:
         except Exception as e:
             logger.error(f"{self.session_name} | Unknown error while trying to upgrade level: {e}")
             return False
-
         
     def fetch_missions(self, http_client: cloudscraper.CloudScraper):
         try:
-            missions = http_client.get(f"{endpoint2}mission/getDailyMission")
+            missions = http_client.get(f"{endpoint}mission/getDailyMission")
             res = missions.json()
             if missions.status_code == 200 and res.get("code") == 0:
                 data = res.get("data")
@@ -418,7 +424,7 @@ class Tapper:
         try:
             payload = json.dumps(mission_id)
             logger.info(f"{self.session_name} | Attempt <red>{maxattempt - attempt + 1}</red> to check daily mission: <cyan>{mission_id}</cyan>")
-            check_mission = http_client.post(f"{endpoint2}mission/checkDailyMission", data=payload)
+            check_mission = http_client.post(f"{endpoint}mission/checkDailyMission", data=payload)
             res = check_mission.json()
             if check_mission.status_code == 200:    
                 if res.get("code") == 0:
@@ -427,11 +433,11 @@ class Tapper:
                     return True
                 else:
                     logger.warning(f"{self.session_name} | <yellow>Failed to check daily mission {mission_id}: {res.get('message')}</yellow>")
-                    await asyncio.sleep(random.randint(3, 5))
+                    await asyncio.sleep(random.uniform(3, 5))
                     return await self.check_mission(http_client, mission_id, attempt - 1, maxattempt)
             else:
                 logger.warning(f"{self.session_name} | <yellow>Failed to check daily mission {mission_id}: {check_mission.status_code}</yellow>")
-                await asyncio.sleep(random.randint(3, 5))
+                await asyncio.sleep(random.uniform(3, 5))
                 return await self.check_mission(http_client, mission_id, attempt - 1, maxattempt)
         except Exception as e:
             logger.error(f"{self.session_name} | Unknown error while trying to check daily mission {mission_id}: {e}")
@@ -444,7 +450,7 @@ class Tapper:
         try:
             payload = json.dumps(mission_id)
             logger.info(f"{self.session_name} | Attempt <red>{maxattempt - attempt + 1}</red> to check daily mission: <cyan>{mission_id}</cyan>")
-            claim_mission = http_client.post(f"{endpoint2}mission/claimReward", data=payload)
+            claim_mission = http_client.post(f"{endpoint}mission/claimReward", data=payload)
             res = claim_mission.json()
             if claim_mission.status_code == 200:
                 if res.get("code") == 0:
@@ -453,11 +459,11 @@ class Tapper:
                     return True
                 else:
                     logger.warning(f"{self.session_name} | <yellow>Failed to claim daily mission {mission_id}: {res.get('message')}</yellow>")
-                    await asyncio.sleep(random.randint(3, 5))
+                    await asyncio.sleep(random.uniform(3, 5))
                     return await self.claim_mission(http_client, mission_id, attempt - 1, maxattempt)
             else:
                 logger.warning(f"{self.session_name} | <yellow>Failed to claim daily mission {mission_id}: {claim_mission.status_code}</yellow>")
-                await asyncio.sleep(random.randint(3, 5))
+                await asyncio.sleep(random.uniform(3, 5))
                 return await self.claim_mission(http_client, mission_id, attempt - 1, maxattempt)
         except Exception as e:
             logger.error(f"{self.session_name} | Unknown error while trying to claim daily mission {mission_id}: {e}")
@@ -475,20 +481,19 @@ class Tapper:
             if mission['missionStatus'] == 0:
                 check = await self.check_mission(http_client, mission['missionId'], attempt, maxattempt)
                 if check:
-                    await asyncio.sleep(random.randint(3, 5))
+                    await asyncio.sleep(random.uniform(3, 5))
                     await self.claim_mission(http_client, mission['missionId'], attempt, maxattempt)
                 else:
                     logger.warning(f"{self.session_name} | <yellow>Skipping mission {mission['missionId']} after failed attempts.</yellow>")
 
-                await asyncio.sleep(random.randint(1, 3))
+                await asyncio.sleep(random.uniform(1, 3))
 
         logger.success(f"{self.session_name} | <green>Successfully processed all daily missions</green>")
         return True
-
     
     async def fetch_tasks(self, http_client: cloudscraper.CloudScraper):
         try:
-            tasks = http_client.get(f"{endpoint2}task/getCommonTaskList")
+            tasks = http_client.get(f"{endpoint}task/getTaskList")
             res = tasks.json()
             if tasks.status_code == 200 and res.get("code") == 0:
                 data = res.get("data")
@@ -499,13 +504,37 @@ class Tapper:
         except Exception as e:
             logger.error(f"{self.session_name} | Unknown error while trying to fetch tasks: {e}")
             return None
+        
+    async def check_task(self, http_client: cloudscraper.CloudScraper, task_id: str, attempt=3, maxattempt=3):
+        if attempt == 0:
+            return False
+
+        try:
+            payload = json.dumps(task_id)
+            check_task = http_client.post(f"{endpoint}task/checkTask", data=payload)
+            res = check_task.json()
+            if check_task.status_code == 200:
+                if res.get("code") == 0:
+                    logger.success(f"{self.session_name} | <green>Checking task {task_id}...</green>")
+                    return True
+                else:
+                    logger.warning(f"{self.session_name} | <yellow>Failed to check task {task_id}: {res.get('message')}</yellow>")
+                    await asyncio.sleep(random.uniform(3, 5))
+                    return await self.check_task(http_client, task_id, attempt - 1, maxattempt)
+            else:
+                logger.warning(f"{self.session_name} | <yellow>Failed to check task {task_id}: {check_task.status_code}</yellow>")
+                await asyncio.sleep(random.uniform(3, 5))
+                return await self.check_task(http_client, task_id, attempt - 1, maxattempt)
+        except Exception as e:
+            logger.error(f"{self.session_name} | Unknown error while trying to check task {task_id}: {e}")
+            return False
 
     async def finish_task(self, http_client: cloudscraper.CloudScraper, task_id: str, attempt=3, maxattempt=3):
         if attempt == 0:
             return False    
         try:
             payload = json.dumps(task_id)
-            finish_task = http_client.post(f"{endpoint1}task/finishTask", data=payload)
+            finish_task = http_client.post(f"{endpoint}task/claimTaskReward", data=payload)
             res = finish_task.json()
             if finish_task.status_code == 200:
                 if res.get("code") == 0:
@@ -514,11 +543,11 @@ class Tapper:
                     return True
                 else:
                     logger.warning(f"{self.session_name} | <yellow>Failed to finish task {task_id}: {res.get('message')}</yellow>")
-                    await asyncio.sleep(random.randint(3, 5))
+                    await asyncio.sleep(random.uniform(3, 5))
                     return await self.finish_task(http_client, task_id, attempt - 1, maxattempt)
             else:
                 logger.warning(f"{self.session_name} | <yellow>Failed to finish task {task_id}: {finish_task.status_code}</yellow>")
-                await asyncio.sleep(random.randint(3, 5))
+                await asyncio.sleep(random.uniform(3, 5))
                 return await self.finish_task(http_client, task_id, attempt - 1, maxattempt)
         except Exception as e:
             logger.error(f"{self.session_name} | Unknown error while trying to finish task {task_id}: {e}")
@@ -526,17 +555,118 @@ class Tapper:
         
     async def process_tasks(self, http_client: cloudscraper.CloudScraper):
         tasks = await self.fetch_tasks(http_client)
-        if tasks is None:
+        
+        if not tasks:
+            logger.warning(f"{self.session_name} | No tasks found to process.")
             return False
-        for task in tasks:
-            if task["taskStatus"] == 0:
-                await self.finish_task(http_client, task["taskId"], 3, 3)
-                await asyncio.sleep(random.randint(1, 3))
-            else:
-                logger.info(f"{self.session_name} | <yellow>Skipped {task['taskDescription']} task because it's already finished</yellow>")
-                await asyncio.sleep(0.5)
-        logger.success(f"{self.session_name} | <green>Successfully processed all tasks</green>")
+
+        all_tasks = [task for task_list in tasks.values() if isinstance(task_list, list) for task in task_list]
+        unfinished_tasks = [task for task in all_tasks if task["taskStatus"] == 0]
+
+        if not unfinished_tasks:
+            logger.info(f"{self.session_name} | <green>All tasks are already completed. </green>")
+            return True
+
+        for task in unfinished_tasks:
+            check = await self.check_task(http_client, task["taskId"])
+            if not check:
+                logger.warning(f"{self.session_name} | <yellow>Skipping task: {task['taskDescription']}</yellow>")
+                continue
+            await asyncio.sleep(random.uniform(1, 3))
+            await self.finish_task(http_client, task["taskId"], 3, 3)
+            logger.info(f"{self.session_name} | <green>Completed task: {task['taskDescription']}</green>")
+
+        skipped_tasks = len(all_tasks) - len(unfinished_tasks)
+        if skipped_tasks:
+            logger.info(f"{self.session_name} | Skipped {skipped_tasks} already completed tasks.")
+
+        logger.success(f"{self.session_name} | <green>Successfully processed all tasks.</green>")
         return True
+    
+    async def finish_upgrade_task(self, http_client: cloudscraper.CloudScraper, task_id: str):
+        try:
+            payload = json.dumps(task_id)
+            finish_task = http_client.post(f"{endpoint}task/finishUserUpgradeTask", data=payload)
+            res = finish_task.json()
+            if finish_task.status_code == 200 and res.get("code") == 0:
+                logger.success(f"{self.session_name} | <green>Successfully finished upgrade task {task_id}. Claimed <cyan>{res.get('data').get('bonusAmount')}</cyan> coins.</green>")
+                return True
+            else:
+                logger.warning(f"{self.session_name} | <yellow>Failed to finish upgrade task {task_id}: {res.get('message')}</yellow>")
+                return False
+        except Exception as e:
+            logger.error(f"{self.session_name} | Unknown error while trying to finish upgrade task {task_id}: {e}")
+            return False
+        
+    async def process_upgrade_tasks(self, http_client: cloudscraper.CloudScraper):
+        try:
+            upgrade_tasks = http_client.get(f"{endpoint}task/getUserUpgradeTaskList")
+            res = upgrade_tasks.json()
+            if upgrade_tasks.status_code == 200 and res.get("code") == 0:
+                data = res.get("data")
+                tasks = data.get("taskBonusBaseResponseList")
+
+                if not tasks:
+                    logger.warning(f"{self.session_name} | No upgrade tasks found to process.")
+                    return False
+                
+                eligible_tasks = [task for task in tasks if task['taskUserLevel'] <= data['userLevel']]
+                if not eligible_tasks:
+                    logger.warning(f"{self.session_name} | No eligible upgrade tasks found to process.")
+                    return False
+                
+                for task in eligible_tasks:
+                    if task['taskStatus'] == 0:
+                        finish_upgrade_task = await self.finish_upgrade_task(http_client, task['taskId'])
+                        if finish_upgrade_task:
+                            logger.info(f"{self.session_name} | <green>Completed upgrade task: {task['taskDescription']}</green>")
+                        else:
+                            logger.warning(f"{self.session_name} | <yellow>Failed to finish upgrade task: {task['taskDescription']}</yellow>")
+
+                logger.success(f"{self.session_name} | <green>Successfully processed all upgrade tasks.</green>")
+                return True
+
+            else:
+                logger.warning(f"{self.session_name} | <yellow>Failed to fetch upgrade tasks: {res['message']}</yellow>")
+                return None
+        except Exception as e:
+            logger.error(f"{self.session_name} | Unknown error while trying to fetch upgrade tasks: {e}")
+            return None
+        
+    
+    async def claim_bonus(self, http_client: cloudscraper.CloudScraper, bonus_id: int):
+        try:
+            payload = json.dumps(bonus_id)
+            claim_bonus = http_client.post(f"{endpoint}task/claimBonus", data=payload)
+            res = claim_bonus.json()
+            if claim_bonus.status_code == 200 and res.get("code") == 0:
+                data = res.get("data")
+                logger.success(f"{self.session_name} | <green>Finished {bonus_id == 1 and 'Daily Mission' or 'Tasks'} bonus. Successfully claimed <cyan>{data['bonusAmount']}</cyan> coins.</green>")
+                return True
+            else:
+                logger.warning(f"{self.session_name} | <yellow>Failed to claim bonus {bonus_id}: {res['message']}</yellow>")
+                return None
+        except Exception as e:
+            logger.error(f"{self.session_name} | Unknown error while trying to claim bonus: {e}")
+            return None
+        
+
+    # Get YES SUMMER SKINS
+    # async def claim_skins_mystery_reward(self, http_client: cloudscraper.CloudScraper):
+    #     try:
+    #         claim_skins = http_client.post(f"{endpoint}skin/claimReward")
+    #         res = claim_skins.json()
+    #         if claim_skins.status_code == 200 and res.get("code") == 0:
+    #             logger.success(f"{self.session_name} | <green>Successfully claimed <cyan>YES SUMMER SKINS MYSTERY REWARD!</cyan>. Claimed <cyan>{res.get('data').get('bonusAmount')}</cyan> coins.</green>")
+    #             return True
+    #         else:
+    #             logger.warning(f"{self.session_name} | <yellow>Failed to claim <cyan>YES SUMMER SKINS MYSTERY REWARD</cyan>: {res['message']}</yellow>")
+    #             return None
+    #     except Exception as e:
+    #         logger.error(f"{self.session_name} | Unknown error while trying to claim <cyan>YES SUMMER SKINS MYSTERY REWARD!</cyan>: {e}")
+    #         return None
+
+
 
     async def run(self, proxy: str | None) -> None:
         proxy_conn = ProxyConnector().from_url(proxy) if proxy else None
@@ -564,15 +694,15 @@ class Tapper:
                     http_client.headers['token'] = f"{self.auth_token}"
                     session.headers = http_client.headers.copy()
 
-                    await asyncio.sleep(random.randint(1, 3))
+                    await asyncio.sleep(random.uniform(1, 3))
 
                     self.process_invitation(session)
 
                     self.update_balance(session)
-                    await asyncio.sleep(random.randint(1, 2))
+                    await asyncio.sleep(random.uniform(1, 2))
 
                     self.refresh_special_box(session)
-                    await asyncio.sleep(random.randint(1, 2))
+                    await asyncio.sleep(random.uniform(1, 2))
 
                     game_data = self.fetch_account_info(session)
 
@@ -590,13 +720,12 @@ class Tapper:
                         coin_limit_level = game_info.get('singleCoinLevel', 0)
                         fill_rate_level = game_info.get('coinPoolRecoverySpeed', 0)
                         yes_pack_level = game_info.get('swipeBotLevel', 0)
-                        current_amount = game_info.get('currentAmount', 0)
                         
                         logger.info(f"{self.session_name} | <green>Chests left: <cyan>{chests_left}</cyan> - Recovery count: <cyan>{recovery_count}</cyan> - Coins left: <cyan>{self.balance}</cyan></green>")
                         logger.info(f"{self.session_name} | <green>Multi value: <cyan>{multi_value_level} Lvl</cyan> - Coin limit: <cyan>{coin_limit_level} Lvl</cyan> - Fill rate: <cyan>{fill_rate_level} Lvl</cyan> - Yes pack: <cyan>{yes_pack_level} Lvl</cyan></green>")
 
                     await self.process_checkin(session)
-                    await asyncio.sleep(random.randint(1, 3))
+                    await asyncio.sleep(random.uniform(1, 3))
 
                     collect_info = self.fetch_game_info(session)
                     if collect_info:
@@ -606,7 +735,7 @@ class Tapper:
                         if coin_pool_left_count > 0:
                             amount = coin_pool_left_count // single_coin_value
                             self.collect_coin(session, amount)
-                            await asyncio.sleep(random.randint(1, 3))
+                            await asyncio.sleep(random.uniform(1, 3))
 
                     if game_info and game_info.get('specialBoxLeftRecoveryCount', 0) > 0:
                         for _ in range(game_info.get('specialBoxLeftRecoveryCount', 0)):
@@ -618,7 +747,7 @@ class Tapper:
                                     self.collect_special_box(session, box_info['boxType'], box_info['specialBoxTotalCount'])
                                     self.refresh_special_box(session)
                                     await asyncio.sleep(0.5)
-                        await asyncio.sleep(random.randint(1, 3))
+                        await asyncio.sleep(random.uniform(1, 3))
 
                     game_info = self.fetch_build_info(session)
                     if game_info and game_info.get('coinPoolLeftRecoveryCount', 0) > 0:
@@ -630,28 +759,36 @@ class Tapper:
                                     amount = coin_pool_left_count // game_info.get('singleCoinValue', 1)
                                     self.collect_coin(session, amount)
                                     await asyncio.sleep(0.5)
-                        await asyncio.sleep(random.randint(1, 3))
+                        await asyncio.sleep(random.uniform(1, 3))
 
                     self.process_offline_bonus(session)
-                    await asyncio.sleep(random.randint(1, 3))
+                    await asyncio.sleep(random.uniform(1, 3))
 
                     await self.process_missions(session)
-                    await asyncio.sleep(random.randint(1, 3))
+                    await asyncio.sleep(random.uniform(1, 3))
 
                     if settings.AUTO_TASK:
                         await self.process_tasks(session)
-                        await asyncio.sleep(random.randint(1, 3))
+                        await asyncio.sleep(random.uniform(1, 3))
+
+                        await self.process_upgrade_tasks(session)
+                        await asyncio.sleep(random.uniform(1, 3))
+
+                        await self.claim_bonus(session, 1)
+                        await asyncio.sleep(random.uniform(1, 2))
+                        await self.claim_bonus(session, 2)
+                        await asyncio.sleep(random.uniform(1, 2))
 
                     if settings.AUTO_UPGRADE_LEVEL:
-                        await self.upgrade_level(session, settings.MAX_UPGRADE_LEVEL)
-                        await asyncio.sleep(random.randint(1, 3))
+                        await self.upgrade_level(session)
+                        await asyncio.sleep(random.uniform(1, 3))
 
                     box_info = self.fetch_special_box(session)
                     box_info = box_info['autoBox']
                     if box_info is not None and box_info['boxStatus'] is True:
                         self.collect_special_box(session, box_info['boxType'], box_info['specialBoxTotalCount'])
                         self.refresh_special_box(session)
-                        await asyncio.sleep(random.randint(1, 3))
+                        await asyncio.sleep(random.uniform(1, 3))
 
                     logger.info(f"----<cyan>Completed {self.session_name}</cyan>----")
                     await http_client.close()
@@ -664,13 +801,12 @@ class Tapper:
             except Exception as error:
                 # traceback.print_exc()
                 logger.error(f"{self.session_name} | Unknown error: {error}")
-                await asyncio.sleep(delay=randint(60, 120))
-
+                await asyncio.sleep(delay=uniform(60, 120))
 
 
 async def run_query_tapper(query: str, name: str, proxy: str | None):
     try:
-        sleep_ = randint(15, 60)
+        sleep_ = uniform(15, 60)
         logger.info(f" start after {sleep_}s")
         await asyncio.sleep(sleep_)
         await Tapper(query=query, session_name=name, multi_thread=False).run(proxy=proxy)
@@ -690,10 +826,10 @@ async def run_query_tapper1(querys: list[str], proxies):
                 logger.error(f"Invalid Query: {query}")
             i += 1
 
-            sleep_ = randint(settings.DELAY_EACH_ACCOUNT[0], settings.DELAY_EACH_ACCOUNT[1])
+            sleep_ = uniform(settings.DELAY_EACH_ACCOUNT[0], settings.DELAY_EACH_ACCOUNT[1])
             logger.info(f"Sleep {sleep_}s...")
             await asyncio.sleep(sleep_)
 
-        sleep_ = randint(600, 700)
+        sleep_ = uniform(600, 700)
         logger.info(f"<red>Sleep {sleep_}s...</red>")
         await asyncio.sleep(sleep_)

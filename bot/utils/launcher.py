@@ -81,7 +81,7 @@ async def process() -> None:
 
 
     if not action:
-        print(start_text)
+        print(start_text)     
 
         while True:
             action = input("> ")
